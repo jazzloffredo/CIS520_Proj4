@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 
 /* Parallel libraries. */
 #include <omp.h>
@@ -11,8 +12,16 @@
 /* Custom libraries. */
 #include "../include/queue.h"
 
+/* Custom definitions. */
 #define MAX_ENTRIES_PER_READ 10000
-#define NUM_COMPUTE_THREADS 4
+
+int NUM_COMPUTE_THREADS;
+
+/* Timevals for measuring performance. */
+struct timeval overall_start, overall_end;
+struct timeval input_start, input_end;
+struct timeval compute_start, compute_end;
+struct timeval output_start, output_end;
 
 struct Queue *input_queue;  // Stores datasets that are ready to be computed with.
 struct Queue *output_queue; // Stores datasets that are ready to be output to stdout.
@@ -43,6 +52,25 @@ struct dataset *safe_remove_batch_from_queue(struct Queue *);
 
 int main(int argc, char *argv[])
 {
+    if (argc > 1)
+    {
+        NUM_COMPUTE_THREADS = (int)strtol(argv[1], (char **)NULL, 10);
+    }
+    else
+    {
+        NUM_COMPUTE_THREADS = 1;
+    }
+    
+    /* Grab file path from cmdline argument. Default to wiki_dump. */
+    char *path = "/homes/dan/625/wiki_dump.txt";
+    if (argc > 2)
+    {
+        path = argv[2];
+    }
+
+    /* Start overall timer. */
+    gettimeofday(&overall_start, NULL);
+
     /* Initialize OMP. */
     omp_set_num_threads(NUM_COMPUTE_THREADS);
 
@@ -57,13 +85,6 @@ int main(int argc, char *argv[])
     /* Initialize flags. */
     input_complete_flag = 0;
     computation_complete_flag = 0;
-
-    /* Grab file path from cmdline argument. Default to wiki_dump. */
-    char *path = "/homes/dan/625/wiki_dump.txt";
-    if (argc > 1)
-    {
-        path = argv[1];
-    }
 
     /* Try opening file. If file does not exist, exit. */
     FILE *f = try_open_file(path);
@@ -89,13 +110,13 @@ int main(int argc, char *argv[])
     if (in_ret_code)
     {
         printf("ERROR: Return code from pthread_create(&input_thread) is %d.\n", in_ret_code);
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
 
     if (out_ret_code)
     {
         printf("ERROR: Return code from pthread_create(&output_thread) is %d.\n", out_ret_code);
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
 
     /* Begin computing! */
@@ -106,13 +127,32 @@ int main(int argc, char *argv[])
     if (out_ret_code)
     {
         printf("ERROR: Return code from pthread_join(&output_thread) is %d.\n", out_ret_code);
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
 
+    /* Stop overall timer. */
+    gettimeofday(&overall_end, NULL);
+
     /* Cleanup. */
+    try_close_file(f);
     pthread_mutex_destroy(&inq_lock);
     pthread_mutex_destroy(&outq_lock);
     pthread_attr_destroy(&out_attr);
+
+    double overall_time_elapsed = ((overall_end.tv_sec - overall_start.tv_sec) * 1000) + ((overall_end.tv_usec - overall_start.tv_usec) / 1000);
+    double input_time_elapsed = ((input_end.tv_sec - input_start.tv_sec) * 1000) + ((input_end.tv_usec - input_start.tv_usec) / 1000);
+    double compute_time_elapsed = ((compute_end.tv_sec - compute_start.tv_sec) * 1000) + ((compute_end.tv_usec - compute_start.tv_usec) / 1000);
+    double output_time_elapsed = ((output_end.tv_sec - output_start.tv_sec) * 1000) + ((output_end.tv_usec - output_start.tv_usec) / 1000);
+
+    printf ("TIME, OVERALL, %f ms\n", overall_time_elapsed);
+    printf ("TIME, INPUT, %f ms\n", input_time_elapsed);
+    printf ("TIME, COMPUTE, %f ms\n", compute_time_elapsed);
+    printf ("TIME, OUTPUT, %f ms\n", output_time_elapsed);
+
+    printf("DATA, VERSION, OpenMP\n");
+    printf("DATA, NUM OF NODES, %s\n", getenv("nodes"));
+    printf("DATA, NUM OF CORES, %s\n", getenv("cpus-per-task"));
+    printf("DATA, COMP THREADS, %d\n", NUM_COMPUTE_THREADS);
 
     return 0;
 }
@@ -129,6 +169,9 @@ int try_close_file(FILE *f)
 
 void batch_compute()
 {
+    /* Start compute timer. */
+    gettimeofday(&compute_start, NULL);
+
     while (!input_complete_flag || input_queue->count != 0)
     {
         struct dataset *b = safe_remove_batch_from_queue(input_queue);
@@ -146,9 +189,10 @@ void batch_compute()
         }
     }
 
-    computation_complete_flag = 1;
+    /* Stop compute timer. */
+    gettimeofday(&compute_end, NULL);
 
-    pthread_exit(NULL);
+    computation_complete_flag = 1;
 }
 
 void batch_calc_line_diffs(int myID, struct dataset *b)
@@ -200,6 +244,9 @@ void *input_scores(void *f)
     batch->line_start = 0;
     batch->line_count = 0;
 
+    /* Start input timer. */
+    gettimeofday(&input_start, NULL);
+
     while (!feof(f))
     {
         int ch = fgetc(f);
@@ -228,6 +275,9 @@ void *input_scores(void *f)
         }
     }
 
+    /* Stop input timer. */
+    gettimeofday(&input_end, NULL);
+
     input_complete_flag = 1;
 
     pthread_exit(NULL);
@@ -235,6 +285,9 @@ void *input_scores(void *f)
 
 void *output_scores(void *v)
 {
+    /* Start output timer. */
+    gettimeofday(&output_start, NULL);
+
     while (!computation_complete_flag || output_queue->count != 0)
     {
         struct dataset *b = safe_remove_batch_from_queue(output_queue);
@@ -251,6 +304,9 @@ void *output_scores(void *v)
             free(b);
         }
     }
+
+    /* Stop output timer. */
+    gettimeofday(&output_end, NULL);
 
     pthread_exit(NULL);
 }
