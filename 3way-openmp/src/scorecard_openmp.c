@@ -150,7 +150,6 @@ int main(int argc, char *argv[])
     printf ("TIME, OUTPUT, %f ms\n", output_time_elapsed);
 
     printf("DATA, VERSION, OpenMP\n");
-    printf("DATA, NUM OF NODES, %s\n", getenv("nodes"));
     printf("DATA, NUM OF CORES, %s\n", getenv("cpus-per-task"));
     printf("DATA, COMP THREADS, %d\n", NUM_COMPUTE_THREADS);
 
@@ -207,7 +206,7 @@ void batch_calc_line_diffs(int myID, struct dataset *b)
 
         /* Protects against going outside bounds of array. */
         if (myID == NUM_COMPUTE_THREADS - 1)
-            endPos -= 1;
+            endPos = b->line_count - 1;
 
         for (int i = startPos; i < endPos; i++)
         {
