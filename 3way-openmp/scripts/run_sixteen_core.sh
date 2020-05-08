@@ -12,9 +12,6 @@
 # Constraints for this job. Maybe you need to run on the elves.
 #SBATCH --constraint=elves
 
-# Output file name. Default is slurm-%j.out where %j is the job id.
-#SBATCH --output=Scorecard_OMP_16_CORE_%j.data
-
 # Name my job, to make it easier to find in the queue.
 #SBATCH -J Scorecard_OMP_16
 
