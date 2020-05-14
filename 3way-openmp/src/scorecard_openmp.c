@@ -86,6 +86,8 @@ void output_performance()
     printf("DATA, VERSION, OpenMP\n");
     printf("DATA, NUM OF CORES, %s\n", getenv("cpus-per-task"));
     printf("DATA, COMP THREADS, %d\n", NUM_COMPUTE_THREADS);
+
+    fflush(stdout);
 }
 
 void *compute_scores(void *n)
